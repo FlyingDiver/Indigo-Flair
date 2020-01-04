@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<Devices>
+    <SupportURL>https://forums.indigodomo.com/viewforum.php?f=295</SupportURL>
+    <Device type="custom" id="FlairAccount">
+        <Name>Flair User Account</Name>
+        <ConfigUI>
+            <Field id="RefreshToken" type="textfield" defaultValue="" hidden="true" />
+            <Field id="username" type="textfield">
+                <Label>Username:</Label>
+            </Field>
+            <Field id="password" type="textfield" secure="true">
+                <Label>Password:</Label>
+            </Field>
+        </ConfigUI>
+        <States>
+            <State id="authenticated" readonly="true">
+                <ValueType boolType="YesNo">Boolean</ValueType>
+                <TriggerLabel>Authenticated</TriggerLabel>
+                <ControlPageLabel>Authenticated</ControlPageLabel>
+            </State>
+        </States>
+    </Device>
+    <Device type="dimmer" id="FlairVent">
+        <Name>Flair Vent</Name>
+        <ConfigUI>
+            <Field id="flair_account" type="menu">
+                <Label>Flair Account:</Label>
+                <List class="self" method="get_account_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="flair_vent" type="menu">
+                <Label>Vent:</Label>
+                <List class="self" filter="Available" method="get_vent_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+        </ConfigUI>
+    </Device>
+</Devices>
