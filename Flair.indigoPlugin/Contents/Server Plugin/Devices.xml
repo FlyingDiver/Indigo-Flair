@@ -28,6 +28,11 @@
                 <List class="self" method="get_account_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
+            <Field id="flair_structure" type="menu">
+                <Label>Structure:</Label>
+                <List class="self" method="get_structure_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
             <Field id="flair_vent" type="menu">
                 <Label>Vent:</Label>
                 <List class="self" filter="Available" method="get_vent_list" dynamicReload="true"/>

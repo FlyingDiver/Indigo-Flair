@@ -7,17 +7,17 @@ import time
 import logging
 
 #
-# All interactions with the Ecobee servers are encapsulated in this class
+# All interactions with the Flair servers are encapsulated in this class
 #
 
 CLIENT_ID = "mWmHRWAhipDket6vf7nAUIqrLhcskpRiYeJiSLbL"
 CLIENT_SECRET = "ofcjvnX50UekEa02AxrlJTM6gleUl7Ulapd5ZMID0BLUObxFQsRPtS83m4I0"
-
+SCOPE = 'structures.view vents.view vents.edit' 
 
 class FlairAccount:
 
     def __init__(self, dev, refresh_token = None):
-        self.logger = logging.getLogger("Plugin.EcobeeAccount")
+        self.logger = logging.getLogger("Plugin.FlairAccount")
         self.authenticated = False
         self.next_refresh = time.time()
         self.structures = {}
@@ -27,11 +27,11 @@ class FlairAccount:
         self.password = dev.pluginProps['password']
         self.refresh_token = dev.pluginProps['RefreshToken']
         if refresh_token and len(refresh_token):
-            self.logger.debug(u"{}: EcobeeAccount __init__, using refresh token = {}".format(self.name, refresh_token))
+            self.logger.debug(u"{}: FlairAccount __init__, using refresh token = {}".format(self.name, refresh_token))
             self.refresh_token = refresh_token
             self.do_token_refresh()
         else:
-            self.logger.debug(u"{}: EcobeeAccount __init__, doing get_tokens()".format(self.name))
+            self.logger.debug(u"{}: FlairAccount __init__, doing get_tokens()".format(self.name))
             self.get_tokens()
                 
 #
@@ -48,7 +48,7 @@ class FlairAccount:
             'grant_type':  'password',
             'username':  self.username, 
             'password':  self.password,
-            'scope':  'structures.view structures.edit'        
+            'scope':  SCOPE       
         }
         
         try:
@@ -70,12 +70,10 @@ class FlairAccount:
             self.logger.error("Token Request failed, response = {}".format(response))                
             self.authenticated = False
 
-
-    # called from __init__ or main loop to refresh the access tokens
-
     def do_token_refresh(self):
         if not self.refresh_token:
             self.authenticated = False
+            self.get_tokens()
             return
             
         self.logger.debug("Token Request with refresh_token = {}".format(self.refresh_token))
@@ -88,13 +86,13 @@ class FlairAccount:
             'client_secret': CLIENT_SECRET, 
             'grant_type':  'refresh_token',
             'refresh_token':  self.refresh_token,
-            'scope':  'structures.view structures.edit'        
+            'scope':  SCOPE        
         }
         try:
             request = requests.post('https://api.flair.co/oauth/token',  headers=headers, params=params)
         except requests.RequestException, e:
             self.logger.error("Token Refresh Error, exception = {}".format(e))
-            self.next_refresh = time.time() + 300.0         # try again in five minutes
+            self.refresh_token = None
             return
             
         if request.status_code == requests.codes.ok:
@@ -111,14 +109,13 @@ class FlairAccount:
             error = request.json()['error']
             if error == 'invalid_grant':
                 self.logger.error(u"{}: Authentication lost, please re-authenticate".format(self.name))
+                self.refresh_token = None
                 self.authenticated = False   
             else:                           
                 self.logger.error("Token Refresh Error, error = {}".format(error))
-                self.next_refresh = time.time() + 300.0         # try again in five minutes
+                self.refresh_token = None
         except:
             pass
-
-        self.next_refresh = time.time() + 300.0         # try again in five minutes
 
         
 #
@@ -142,14 +139,13 @@ class FlairAccount:
             request = requests.get('https://api.flair.co/api/structures', headers=header, params=params)
         except requests.RequestException, e:
             self.logger.error(u"{}: Flair Account Update Error, exception = {}".format(self.name, e))
-            return
+            return None
             
         if request.status_code != requests.codes.ok:
             self.logger.error(u"{}: Flair Account Update failed, response = '{}'".format(self.name, request.text))                
-            return
+            return None
             
         for s in request.json()['data']:
-            self.logger.info("{}: Flair structure id {}".format(s['attributes']['name'], s['id']))
             structure_dict = {}
             structure_dict['attributes'] =  s['attributes']
             for relationship in ['zones', 'thermostats', 'vents', 'rooms', 'pucks']:
@@ -165,13 +161,9 @@ class FlairAccount:
                 else:
                     structure_dict[relationship] =  {}
                     for d in request.json()['data']:
-                        self.logger.info("{}: Flair {} id {}".format(d['attributes']['name'], relationship, d['id']))
                         structure_dict[relationship][d['id']] =  d['attributes']
                    
             self.structures[s['id']] = structure_dict
- 
-    def dump_data(self):
-
-        self.logger.info(json.dumps(self.structures, sort_keys=True, indent=4, separators=(',', ': ')))
-             
-            
+        
+        return self.structures
+        

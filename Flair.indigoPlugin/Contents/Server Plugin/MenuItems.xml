@@ -9,7 +9,7 @@
 <MenuItems>
     <SupportURL>https://forums.indigodomo.com/viewforum.php?f=295</SupportURL>
     <MenuItem id="menu3">
-        <Name>Write Thermostat Data to Log</Name>
+        <Name>Write Data to Log</Name>
         <CallbackMethod>menuDumpData</CallbackMethod>
     </MenuItem>
 </MenuItems>

@@ -37,7 +37,9 @@ class Plugin(indigo.PluginBase):
         self.next_update = time.time() + self.updateFrequency
         
         self.flair_accounts = {}
-
+        self.flair_vents = {}
+        self.account_data = {}
+        
         self.update_needed = False
         
 
@@ -72,6 +74,49 @@ class Plugin(indigo.PluginBase):
             self.logger.debug(u"updateFrequency = {}".format(self.updateFrequency))
             self.next_update = time.time()
         
+        
+    def deviceStartComm(self, dev):
+        self.logger.info(u"{}: Starting {} Device {}".format(dev.name, dev.deviceTypeId, dev.id))
+        
+        if dev.deviceTypeId == 'FlairAccount':     # create the Flair account object.  It will attempt to refresh the auth token.
+            
+            account = FlairAccount(dev, refresh_token = dev.pluginProps['RefreshToken'])
+            self.flair_accounts[dev.id] = account
+            newProps = dev.pluginProps
+            newProps["RefreshToken"] = account.refresh_token
+            dev.replacePluginPropsOnServer(newProps)
+            
+            dev.updateStateOnServer(key="authenticated", value=account.authenticated)
+            self.update_needed = True
+        
+        elif dev.deviceTypeId == 'FlairVent':
+            self.flair_vents[dev.id] = dev
+            
+
+    def deviceStopComm(self, dev):
+        self.logger.info(u"{}: Stopping {} Device {}".format( dev.name, dev.deviceTypeId, dev.id))
+
+        if dev.deviceTypeId == 'FlairAccount':
+            if dev.id in self.flair_accounts:
+                del self.flair_accounts[dev.id]
+            
+        elif dev.deviceTypeId == 'FlairVent':
+            if dev.id in self.flair_vents:
+                del self.flair_vents[dev.id]
+ 
+    # need this to keep the device from start/stop looping when the refresh token is updated
+    
+    def didDeviceCommPropertyChange(self, origDev, newDev):
+        if newDev.deviceTypeId == "FlairAccount":
+            if origDev.pluginProps['username'] != newDev.pluginProps['username']:
+                return True
+            elif origDev.pluginProps['password'] != newDev.pluginProps['password']:
+                return True    
+            return False    
+        
+        else:
+            return True  
+
 
     ########################################
         
@@ -86,14 +131,32 @@ class Plugin(indigo.PluginBase):
                 
                     # update from Flair servers
                     
-                    for accountID, account in self.flair_accounts.items():
-                        if account.authenticated:
-                            account.server_update()
-                            indigo.devices[accountID].updateStateImageOnServer(indigo.kStateImageSel.SensorOn)
+                    for accountID, account in self.flair_accounts.iteritems():
+                        device = indigo.devices[accountID]
+                        if not account.authenticated:
+                            device.updateStateImageOnServer(indigo.kStateImageSel.SensorTripped)
+                            self.logger.debug("{}: Flair account not authenticated, skipping update".format(device.name))
                         else:
-                            indigo.devices[accountID].updateStateImageOnServer(indigo.kStateImageSel.SensorTripped)
-                            self.logger.debug("Flair account {} not authenticated, skipping update".format(accountID))
-                                        
+                            self.account_data[accountID] = account.server_update()
+                            device.updateStateImageOnServer(indigo.kStateImageSel.SensorOn)
+
+                            
+                    # update devices
+                    
+                    for ventID in self.flair_vents:
+                        device = indigo.devices[ventID]
+                        vent = self.account_data[int(device.pluginProps['flair_account'])][device.pluginProps['flair_structure']]['vents'][device.pluginProps['flair_vent']]
+                        vopen = vent['percent-open']
+                        device.updateStateOnServer("brightnessLevel", vopen)
+                        if vopen == 0:
+                            device.updateStateImageOnServer(indigo.kStateImageSel.FanOff)
+                        elif vopen == 100:
+                            device.updateStateImageOnServer(indigo.kStateImageSel.FanHigh)
+                        else:
+                            device.updateStateImageOnServer(indigo.kStateImageSel.FanMedium)
+                        
+                        
+                        
 
                 # Refresh the auth tokens as needed.  Refresh interval for each account is calculated during the refresh
                 
@@ -123,89 +186,51 @@ class Plugin(indigo.PluginBase):
     ########################################
 
     def get_account_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug("get_account_list: typeId = {}, targetId = {}, valuesDict = {}".format(typeId, targetId, valuesDict))
+        self.logger.debug("get_account_list: typeId = {}, targetId = {}, valuesDict = {}".format(typeId, targetId, valuesDict))
         accounts = [
-            (account.dev.id, indigo.devices[account.dev.id].name)
-            for account in self.flair_accounts.values()
+            (accountID, indigo.devices[accountID].name)
+            for accountID in self.flair_accounts
         ]
         self.logger.debug("get_account_list: accounts = {}".format(accounts))
         return accounts
         
 
+    def get_structure_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.debug("get_structure_list: typeId = {}, targetId = {}, valuesDict = {}".format(typeId, targetId, valuesDict))
+        
+        try:
+            structures = [
+                (key, value['attributes']['name'])
+                for key, value in self.account_data[int(valuesDict["flair_account"])].iteritems()
+            ]
+        except:
+            structures = []
+        self.logger.debug("get_structure_list: structures = {}".format(structures))
+        return structures
+        
+        
+
     def get_vent_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug("get_device_list: typeId = {}, targetId = {}, filter = {}, valuesDict = {}".format(typeId, targetId, filter, valuesDict))
+        self.logger.debug("get_vent_list: typeId = {}, targetId = {}, filter = {}, valuesDict = {}".format(typeId, targetId, filter, valuesDict))
 
         try:
-            flair_account = self.flair_accounts[int(valuesDict["flair_account"])]
+            structure = self.account_data[int(valuesDict["flair_account"])][valuesDict["flair_structure"]]
+            self.logger.debug("get_vent_list: structure->vents = {}".format(structure['vents']))
+            vents = [
+                (key, value['name'])
+                for key, value in structure['vents'].iteritems()
+            ]
         except:
-            self.logger.debug("get_vent_list: no active accounts, returning empty list")
-            return []
+            vents = []
+        self.logger.debug("get_vent_list: vents = {}".format(vents))
+        return vents
         
-        if valuesDict["deviceType"] == "FlairVent":
-        
-            available_devices =[]
-            for iden, therm in Flair.thermostats.items():
-                if iden not in active_stats:
-                    available_devices.append((iden, therm["name"]))
-        
-            if targetId:
-                try:
-                    dev = indigo.devices[targetId]
-                    available_devices.insert(0, (dev.pluginProps["address"], dev.name))
-                except:
-                    pass
-                        
-        else:
-            self.logger.warning("get_device_list: unknown deviceType = {}".format(valuesDict["deviceType"]))
-          
-        self.logger.debug("get_device_list: available_devices for {} = {}".format(valuesDict["deviceType"], available_devices))
-        return available_devices     
 
     # doesn't do anything, just needed to force other menus to dynamically refresh
     def menuChanged(self, valuesDict = None, typeId = None, devId = None):
         return valuesDict      
 
         
-    def deviceStartComm(self, dev):
-        self.logger.info(u"{}: Starting {} Device {}".format(dev.name, dev.deviceTypeId, dev.id))
-        
-        if dev.deviceTypeId == 'FlairAccount':     # create the Flair account object.  It will attempt to refresh the auth token.
-            
-            account = FlairAccount(dev, refresh_token = dev.pluginProps['RefreshToken'])
-            self.flair_accounts[dev.id] = account
-            newProps = dev.pluginProps
-            newProps["RefreshToken"] = account.refresh_token
-            dev.replacePluginPropsOnServer(newProps)
-            
-            dev.updateStateOnServer(key="authenticated", value=account.authenticated)
-            self.update_needed = True
-                                        
-
-    def deviceStopComm(self, dev):
-        self.logger.info(u"{}: Stopping {} Device {}".format( dev.name, dev.deviceTypeId, dev.id))
-
-        if dev.deviceTypeId == 'FlairAccount':
-            if dev.id in self.flair_accounts:
-                del self.flair_accounts[dev.id]
-            
-        elif dev.deviceTypeId == 'FlairThermostat':
-            if dev.id in self.flair_thermostats:
-                del self.flair_thermostats[dev.id]
- 
-    # need this to keep the device from start/stop looping when the refresh token is updated
-    
-    def didDeviceCommPropertyChange(self, origDev, newDev):
-        if newDev.deviceTypeId == "FlairAccount":
-            if origDev.pluginProps['username'] != newDev.pluginProps['username']:
-                return True
-            elif origDev.pluginProps['password'] != newDev.pluginProps['password']:
-                return True    
-            return False    
-        
-        else:
-            return True  
-
-
     def actionControlUniversal(self, action, dev):
         self.logger.debug(u"{}: action.actionControlUniversal: {}".format(dev.name, action.deviceAction))
         if action.deviceAction == indigo.kUniversalAction.RequestStatus:
@@ -216,7 +241,11 @@ class Plugin(indigo.PluginBase):
         
     def menuDumpData(self):
         self.logger.debug(u"menuDumpData")
-        for accountID, account in self.flair_accounts.items():
-            account.dump_data()
+        for accountID in self.flair_accounts:
+            device = indigo.devices[accountID]
+            self.logger.info("{} ({}): Data:\n{}".format(device.name, device.id, json.dumps(self.account_data[accountID], sort_keys=True, indent=4, separators=(',', ': '))))
         return True
+
+             
+            
 
