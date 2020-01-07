@@ -1,7 +1,15 @@
 <?xml version="1.0"?>
 <PluginConfig>
   <SupportURL>https://forums.indigodomo.com/viewforum.php?f=295</SupportURL>
-  
+    
+  <Field id="temperatureScale" type="menu" defaultValue="F">
+    <Label>Temperature scale:</Label>
+    <List>
+      <Option value="F">Fahrenheit</Option>
+      <Option value="C">Celsius</Option>
+    </List>
+  </Field>
+
   <Field id="updateFrequency" type="textfield" defaultValue="15">
     <Label>Update frequency (minutes):</Label>
   </Field>

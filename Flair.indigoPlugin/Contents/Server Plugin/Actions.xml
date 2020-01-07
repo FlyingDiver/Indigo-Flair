@@ -1,4 +1,13 @@
 <?xml version="1.0"?>
 <Actions>
     <SupportURL>https://forums.indigodomo.com/viewforum.php?f=295</SupportURL>
+	<Action id="setVentOpening" deviceFilter="self.FlairVent">
+		<Name>Set Vent Opening</Name>
+		<CallbackMethod>setVentOpening</CallbackMethod>
+		<ConfigUI>
+			<Field id="percent_open" type="textfield" defaultValue="50">
+				<Label>Percent Open:</Label>
+			</Field>
+		</ConfigUI>
+	</Action>
 </Actions>

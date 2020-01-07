@@ -16,16 +16,16 @@ SCOPE = 'structures.view vents.view vents.edit'
 
 class FlairAccount:
 
-    def __init__(self, dev, refresh_token = None):
+    def __init__(self, name = None, refresh_token = None, username = None, password = None):
         self.logger = logging.getLogger("Plugin.FlairAccount")
         self.authenticated = False
         self.next_refresh = time.time()
         self.structures = {}
                     
-        self.name = dev.name
-        self.username = dev.pluginProps['username']
-        self.password = dev.pluginProps['password']
-        self.refresh_token = dev.pluginProps['RefreshToken']
+        self.name = name
+        self.username = username
+        self.password = password
+        self.refresh_token = refresh_token
         if refresh_token and len(refresh_token):
             self.logger.debug(u"{}: FlairAccount __init__, using refresh token = {}".format(self.name, refresh_token))
             self.refresh_token = refresh_token
@@ -53,7 +53,7 @@ class FlairAccount:
         
         try:
             request = requests.post('https://api.flair.co/oauth/token',  headers=headers, params=params)
-        except requests.RequestException, e:
+        except requests.RequestException as e:
             self.logger.error("Token Request Error, exception = {}".format(e))
             self.authenticated = False
             return
@@ -90,7 +90,7 @@ class FlairAccount:
         }
         try:
             request = requests.post('https://api.flair.co/oauth/token',  headers=headers, params=params)
-        except requests.RequestException, e:
+        except requests.RequestException as e:
             self.logger.error("Token Refresh Error, exception = {}".format(e))
             self.refresh_token = None
             return
@@ -126,8 +126,6 @@ class FlairAccount:
 
     def server_update(self):
     
-        header = {'Content-Type': 'application/json;charset=UTF-8',
-                  'Authorization': 'Bearer ' + self.access_token}
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept':       'application/json',
@@ -136,34 +134,177 @@ class FlairAccount:
         params = {}
             
         try:
-            request = requests.get('https://api.flair.co/api/structures', headers=header, params=params)
-        except requests.RequestException, e:
+            s_request = requests.get('https://api.flair.co/api/structures', headers=headers, params=params)
+        except requests.RequestException as e:
             self.logger.error(u"{}: Flair Account Update Error, exception = {}".format(self.name, e))
             return None
             
-        if request.status_code != requests.codes.ok:
-            self.logger.error(u"{}: Flair Account Update failed, response = '{}'".format(self.name, request.text))                
+        s_response = s_request.json()        
+        if s_request.status_code != requests.codes.ok:
+            self.logger.error(u"{}: Flair Account Update failed, response =\n{}".format(self.name, json.dumps(s_response, sort_keys=True, indent=4, separators=(',', ': '))))                 
             return None
             
-        for s in request.json()['data']:
+        for s in s_response['data']:
+            
+            # save the structure data
+            
             structure_dict = {}
-            structure_dict['attributes'] =  s['attributes']
-            for relationship in ['zones', 'thermostats', 'vents', 'rooms', 'pucks']:
+            structure_dict['structure'] =  s['attributes']
+            
+            # loop to collect related data
+            
+            for relationship in ['thermostats', 'rooms', 'pucks', 'hvac-units']:
+
                 url = s['relationships'][relationship]['links']['related']
                 self.logger.debug("{}: Fetching {}".format(self.name, url))
                 try:
-                    request = requests.get('https://api.flair.co'+url, headers=header, params=params)
-                except requests.RequestException, e:
+                    r_request = requests.get('https://api.flair.co'+url, headers=headers, params=params)
+                except requests.RequestException as e:
                     self.logger.error(u"{}: Flair Account Update Error, exception = {}".format(self.name, e))
-            
-                if request.status_code != requests.codes.ok:
-                    self.logger.error(u"{}: Flair Account Update failed, response = '{}'".format(self.name, request.text))                
+
+                r_response = r_request.json()                    
+                if r_request.status_code != requests.codes.ok:
+                    self.logger.error(u"{}: Flair Account Update failed, response =\n{}".format(self.name, json.dumps(r_response, sort_keys=True, indent=4, separators=(',', ': '))))                 
                 else:
                     structure_dict[relationship] =  {}
-                    for d in request.json()['data']:
+                    for d in r_response['data']:
                         structure_dict[relationship][d['id']] =  d['attributes']
+                    
+            # special handling for vent data to get the current readings as well
+            
+            url = s['relationships']['vents']['links']['related']
+            self.logger.debug("{}: Fetching {}".format(self.name, url))
+            try:
+                v_request = requests.get('https://api.flair.co'+url, headers=headers, params=params)
+            except requests.RequestException as e:
+                self.logger.error(u"{}: Flair Account Update Error, exception =\n{}".format(self.name, e))
+        
+            v_response = v_request.json()                    
+            if v_request.status_code != requests.codes.ok:
+                self.logger.error(u"{}: Flair Account Update failed, response =\n{}".format(self.name, json.dumps(v_response, sort_keys=True, indent=4, separators=(',', ': '))))                 
+            else:
+                structure_dict['vents'] =  {}
+                
+                for d in v_response['data']:
+                    temp =  d['attributes']
+                    
+                    url = d['relationships']['current-reading']['links']['related']
+                    self.logger.debug("{}: Fetching {}".format(self.name, url))
+                    try:
+                        v2_request = requests.get('https://api.flair.co'+url, headers=headers)
+                    except requests.RequestException as e:
+                        print("Vents Request Error, exception = {}".format(e))
+                        return
+        
+                    v2_response = v2_request.json()                    
+                    if v2_request.status_code != requests.codes.ok:
+                        self.logger.error(u"{}: Flair Account Update failed, response =\n{}".format(self.name, json.dumps(v2_response, sort_keys=True, indent=4, separators=(',', ': '))))                 
+                    else:
+                        temp.update(v2_response['data']['attributes'])
+
+                    structure_dict['vents'][d['id']] = temp
                    
             self.structures[s['id']] = structure_dict
         
         return self.structures
         
+    def set_vent(self, vent_id, per_open):
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + self.access_token 
+        }
+        patch_data = {  
+            "data": {
+                "type": "vents",
+                "attributes": {
+                    "percent-open": per_open
+                },
+            "relationships": {}
+            }
+        }     
+          
+        try:
+            url = 'https://api.flair.co/api/vents/' + vent_id
+            request = requests.patch(url, headers=headers, data=json.dumps(patch_data))
+        except requests.RequestException as e:
+            self.logger.error("Vent PATCH Request Error, exception = {}".format(e))
+            return
+        response = request.json()        
+        if request.status_code == requests.codes.ok:
+            self.logger.threaddebug("Vent PATCH Request OK, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))
+        else:
+            self.logger.error("Vent PATCH Request failed, url = {}".format(url))
+            self.logger.error("Vent PATCH Request failed, data = {}".format(patch_data))
+            self.logger.error("Vent PATCH Request failed, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))               
+
+
+    def set_hvac_setpoint(self, hvac_id, temperature):
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + self.access_token 
+        }
+        patch_data = {
+            "data": {
+                "type": "hvac-units",
+                "attributes": {
+                    "temperature": temperature,
+                    "fan-speed": "High",
+                    "swing": "Off",
+                    "mode": "Heat",
+                    "power": "On"
+                },
+                "relationships": {}
+            }
+        }        
+        
+        try:
+            url = 'https://api.flair.co/api/hvac-units/' + vent_id
+            request = requests.patch(url, headers=headers, data=json.dumps(patch_data))
+        except requests.RequestException as e:
+            self.logger.error("HVAC PATCH Request Error, exception = {}".format(e))
+            return
+        response = request.json()        
+        if request.status_code == requests.codes.ok:
+            self.logger.threaddebug("HVAC PATCH Request OK, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))
+        else:
+            self.logger.error("HVAC PATCH Request failed, url = {}".format(url))
+            self.logger.error("HVAC PATCH Request failed, data = {}".format(patch_data))
+            self.logger.error("HVAC PATCH Request failed, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))               
+
+
+    def set_hvac_mode(self, hvac_id, mode):
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + self.access_token 
+        }
+        patch_data = {
+            "data": {
+                "type": "hvac-units",
+                "attributes": {
+                    "temperature": temperature,
+                    "fan-speed": "High",
+                    "swing": "Off",
+                    "mode": "Heat",
+                    "power": "On"
+                },
+                "relationships": {}
+            }
+        }        
+        
+        try:
+            url = 'https://api.flair.co/api/hvac-units/' + vent_id
+            request = requests.patch(url, headers=headers, data=json.dumps(patch_data))
+        except requests.RequestException as e:
+            self.logger.error("HVAC PATCH Request Error, exception = {}".format(e))
+            return
+        response = request.json()        
+        if request.status_code == requests.codes.ok:
+            self.logger.threaddebug("HVAC PATCH Request OK, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))
+        else:
+            self.logger.error("HVAC PATCH Request failed, url = {}".format(url))
+            self.logger.error("HVAC PATCH Request failed, data = {}".format(patch_data))
+            self.logger.error("HVAC PATCH Request failed, response =\n{}".format(json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))))               
+
