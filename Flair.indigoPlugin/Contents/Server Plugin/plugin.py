@@ -44,6 +44,10 @@ kFanModeEnumToStrMap = {
     indigo.kFanMode.AlwaysOn        : u"on"
 }
 
+minMacOS = "10.13"
+def versiontuple(v):
+    return tuple(map(int, (v.split("."))))
+
 class Plugin(indigo.PluginBase):
 
     def __init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs):
@@ -64,7 +68,7 @@ class Plugin(indigo.PluginBase):
        
         macOS = platform.mac_ver()[0]
         self.logger.debug(u"macOS {}, Indigo {}".format(macOS, indigo.server.version))
-        if int(macOS[3:5]) < 13:
+        if versiontuple(macOS) < versiontuple(minMacOS):
             self.logger.error(u"Unsupported macOS version! {}".format(macOS))
                 
         self.updateFrequency = float(self.pluginPrefs.get('updateFrequency', "15")) *  60.0
@@ -116,15 +120,29 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(u"validateDeviceConfigUi, devId = {}, typeId = {}, valuesDict = {}".format(devId, typeId, valuesDict))
         errorsDict = indigo.Dict()
     
-        if len(valuesDict['flair_account']) == 0:
-            errorsDict['flair_account'] = u"Flair Account must be selected"
-        if len(valuesDict['flair_structure']) == 0:
-            errorsDict['flair_structure'] = u"Flair Structure must be selected"
-            
-        if typeId == 'FlairVent' and len(valuesDict['flair_vent']) == 0:
-            errorsDict['flair_vent'] = u"Flair Vent must be selected"
-        elif typeId == 'FlairHVAC' and len(valuesDict['flair_hvac']) == 0:
-            errorsDict['flair_hvac'] = u"Flair Minisplit must be selected"
+        if typeId ==  'FlairAccount':
+            if len(valuesDict['username']) == 0:
+                errorsDict['username'] = u"Username required"
+            if len(valuesDict['password']) == 0:
+                errorsDict['password'] = u"Password required"
+
+        elif typeId == 'FlairVent': 
+        
+            if len(valuesDict['flair_vent']) == 0:
+                errorsDict['flair_vent'] = u"Flair Vent must be selected"
+            if len(valuesDict['flair_account']) == 0:
+                errorsDict['flair_account'] = u"Flair Account must be selected"
+            if len(valuesDict['flair_structure']) == 0:
+                errorsDict['flair_structure'] = u"Flair Structure must be selected"
+
+        elif typeId == 'FlairHVAC':
+        
+            if len(valuesDict['flair_vent']) == 0:
+                errorsDict['flair_vent'] = u"Flair Vent must be selected"
+            if len(valuesDict['flair_account']) == 0:
+                errorsDict['flair_account'] = u"Flair Account must be selected"
+            if len(valuesDict['flair_hvac']) == 0:
+                errorsDict['flair_hvac'] = u"Flair Minisplit must be selected"
         
         if len(errorsDict) > 0:
             return (False, valuesDict, errorsDict)
@@ -222,6 +240,7 @@ class Plugin(indigo.PluginBase):
                         update_list.append({'key' : "system-voltage",     'value' : vent['system-voltage']})
                         update_list.append({'key' : "rssi",               'value' : vent['rssi']})
                         update_list.append({'key' : "updated-at",         'value' : vent['updated-at']})
+                        update_list.append({'key' : "brightnessLevel",    'value' : vent['percent-open'], 'uiValue': "{}%".format(vent['percent-open']) })
                         device.updateStatesOnServer(update_list)
 
                         
@@ -369,18 +388,52 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(u"{}: actionControlDevice: action.deviceAction: {}".format(device.name, action.deviceAction))
         
         if action.deviceAction == indigo.kDeviceAction.TurnOn:
+
             account = self.flair_accounts[int(device.pluginProps['flair_account'])]
             vent_id = device.pluginProps['flair_vent']
             account.set_vent(vent_id, 100)
+            device.updateStateOnServer("brightnessLevel", 100)
         
         elif action.deviceAction == indigo.kDeviceAction.TurnOff:
+
             account = self.flair_accounts[int(device.pluginProps['flair_account'])]
             vent_id = device.pluginProps['flair_vent']
             account.set_vent(vent_id, 0)
+            device.updateStateOnServer("brightnessLevel", 0)
             
+        elif action.deviceAction == indigo.kDeviceAction.SetBrightness:
+
+            newBrightness = action.actionValue
+            account = self.flair_accounts[int(device.pluginProps['flair_account'])]
+            vent_id = device.pluginProps['flair_vent']
+            account.set_vent(vent_id, int(newBrightness))
+            device.updateStateOnServer("brightnessLevel", newBrightness)
+
+        elif action.deviceAction == indigo.kDeviceAction.BrightenBy:
+
+            newBrightness = device.brightness + action.actionValue
+            if newBrightness > 100:
+                newBrightness = 100
+            account = self.flair_accounts[int(device.pluginProps['flair_account'])]
+            vent_id = device.pluginProps['flair_vent']
+            account.set_vent(vent_id, int(newBrightness))
+            device.updateStateOnServer("brightnessLevel", newBrightness)
+
+        ###### DIM BY ######
+        elif action.deviceAction == indigo.kDeviceAction.DimBy:
+            newBrightness = device.brightness - action.actionValue
+            if newBrightness < 0:
+                newBrightness = 0
+            account = self.flair_accounts[int(device.pluginProps['flair_account'])]
+            vent_id = device.pluginProps['flair_vent']
+            account.set_vent(vent_id, int(newBrightness))
+            device.updateStateOnServer("brightnessLevel", newBrightness)
+
         else:
             self.logger.warning(u"{}: actionControlDevice: Unimplemented action.deviceAction: {}".format(device.name, action.deviceAction))
-               
+ 
+
+              
     def actionControlThermostat(self, action, device):
         self.logger.debug(u"{}: actionControlThermostat: action.deviceAction: {}".format(device.name, action.thermostatAction))
        ###### SET HVAC MODE ######
