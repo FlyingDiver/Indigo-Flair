@@ -22,6 +22,52 @@
         </States>
         <UiDisplayStateId>authenticated</UiDisplayStateId>
     </Device>
+    <Device type="sensor" id="FlairPuck">
+        <Name>Flair Puck</Name>
+        <ConfigUI>
+			<Field id="SupportsOnState" type="checkbox" defaultValue="false" hidden="true" />
+			<Field id="SupportsSensorValue" type="checkbox" defaultValue="true" hidden="true" />
+            <Field id="SupportsStatusRequest" type="checkbox" defaultValue="true" hidden="true"/>
+            <Field id="flair_account" type="menu">
+                <Label>Flair Account:</Label>
+                <List class="self" method="get_account_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="flair_structure" type="menu">
+                <Label>Structure:</Label>
+                <List class="self" method="get_structure_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="flair_puck" type="menu">
+                <Label>Puck:</Label>
+                <List class="self" filter="Available" method="get_puck_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+        </ConfigUI>
+        <States>
+            <State id="name">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Name</TriggerLabel>
+                <ControlPageLabel>Name</ControlPageLabel>
+            </State>
+            <State id="current-temperature-c">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Temperature (C)</TriggerLabel>
+                <ControlPageLabel>Temperature (C)</ControlPageLabel>
+            </State>
+            <State id="current-humidity">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Humidity</TriggerLabel>
+                <ControlPageLabel>Humidity</ControlPageLabel>
+            </State>
+            <State id="updated-at">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>updated-at</TriggerLabel>
+                <ControlPageLabel>updated-at</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>current-temperature-c</UiDisplayStateId>
+    </Device>
     <Device type="dimmer" id="FlairVent">
         <Name>Flair Vent</Name>
         <ConfigUI>

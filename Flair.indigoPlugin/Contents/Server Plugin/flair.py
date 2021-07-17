@@ -169,6 +169,7 @@ class FlairAccount:
                     structure_dict[relationship] =  {}
                     for d in r_response['data']:
                         structure_dict[relationship][d['id']] =  d['attributes']
+                    self.logger.debug("{}: Fetched {} {} records".format(self.name, len(structure_dict[relationship]), relationship))
                     
             # special handling for vent data to get the current readings as well
             
@@ -185,24 +186,25 @@ class FlairAccount:
             else:
                 structure_dict['vents'] =  {}
                 
-                for d in v_response['data']:
-                    temp =  d['attributes']
+                for vents in v_response['data']:
+                    temp =  vents['attributes']
                     
-                    url = d['relationships']['current-reading']['links']['related']
+                    url = vents['relationships']['current-reading']['links']['related']
                     self.logger.debug("{}: Fetching {}".format(self.name, url))
                     try:
-                        v2_request = requests.get('https://api.flair.co'+url, headers=headers)
+                        vent_request = requests.get('https://api.flair.co'+url, headers=headers)
                     except requests.RequestException as e:
                         print("Vents Request Error, exception = {}".format(e))
                         return
         
-                    v2_response = v2_request.json()                    
-                    if v2_request.status_code != requests.codes.ok:
+                    vent_data = vent_request.json()                    
+                    if vent_request.status_code != requests.codes.ok:
                         self.logger.error(u"{}: Flair Account Update failed, response =\n{}".format(self.name, json.dumps(v2_response, sort_keys=True, indent=4, separators=(',', ': '))))                 
                     else:
-                        temp.update(v2_response['data']['attributes'])
+                        temp.update(vent_data['data']['attributes'])
 
                     structure_dict['vents'][d['id']] = temp
+                self.logger.debug("{}: Fetched {} vent records".format(self.name, len(structure_dict['vents'])))
                    
             self.structures[s['id']] = structure_dict
         

@@ -77,6 +77,7 @@ class Plugin(indigo.PluginBase):
         
         self.flair_accounts = {}
         self.flair_vents = {}
+        self.flair_pucks = {}
         self.flair_hvacs = {}
         self.account_data = {}
         
@@ -126,6 +127,15 @@ class Plugin(indigo.PluginBase):
             if len(valuesDict['password']) == 0:
                 errorsDict['password'] = u"Password required"
 
+        elif typeId == 'FlairPuck': 
+        
+            if len(valuesDict['flair_puck']) == 0:
+                errorsDict['flair_puck'] = u"Flair Puck must be selected"
+            if len(valuesDict['flair_account']) == 0:
+                errorsDict['flair_account'] = u"Flair Account must be selected"
+            if len(valuesDict['flair_structure']) == 0:
+                errorsDict['flair_structure'] = u"Flair Structure must be selected"
+
         elif typeId == 'FlairVent': 
         
             if len(valuesDict['flair_vent']) == 0:
@@ -166,6 +176,10 @@ class Plugin(indigo.PluginBase):
             dev.updateStateOnServer(key="authenticated", value=account.authenticated)
             self.update_needed = True
         
+        elif dev.deviceTypeId == 'FlairPuck':
+            self.flair_pucks[dev.id] = dev
+            self.update_needed = True
+            
         elif dev.deviceTypeId == 'FlairVent':
             self.flair_vents[dev.id] = dev
             self.update_needed = True
@@ -182,6 +196,10 @@ class Plugin(indigo.PluginBase):
             if dev.id in self.flair_accounts:
                 del self.flair_accounts[dev.id]
             
+        elif dev.deviceTypeId == 'FlairPuck':
+            if dev.id in self.flair_pucks:
+                del self.flair_pucks[dev.id]
+ 
         elif dev.deviceTypeId == 'FlairVent':
             if dev.id in self.flair_vents:
                 del self.flair_vents[dev.id]
@@ -228,6 +246,20 @@ class Plugin(indigo.PluginBase):
                             
                     # update devices
                     
+                    for puckID in self.flair_pucks:
+                        device = indigo.devices[puckID]
+                        puck = self.account_data[int(device.pluginProps['flair_account'])][device.pluginProps['flair_structure']]['pucks'][device.pluginProps['flair_puck']]
+                        self.logger.threaddebug("{}: Device update data: {}".format(device.name, puck))
+                        temp = puck['current-temperature-c']
+                        update_list = []
+                        update_list.append({'key' : "name",                  'value' : puck['name']})
+                        update_list.append({'key' : "current-humidity",      'value' : puck['current-humidity']})
+                        update_list.append({'key' : "updated-at",            'value' : puck['updated-at']})
+                        update_list.append({'key' : "current-temperature-c", 'value' : temp})
+                        update_list.append({'key' : 'sensorValue',           'value' : temp, 'decimalPlaces': 1, 'uiValue': "{} °C".format(puck['current-temperature-c'])})
+                        device.updateStatesOnServer(update_list)
+
+                        
                     for ventID in self.flair_vents:
                         device = indigo.devices[ventID]
                         vent = self.account_data[int(device.pluginProps['flair_account'])][device.pluginProps['flair_structure']]['vents'][device.pluginProps['flair_vent']]
@@ -323,6 +355,20 @@ class Plugin(indigo.PluginBase):
             vents = []
         self.logger.debug("get_vent_list: vents = {}".format(vents))
         return vents
+
+    def get_puck_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.debug("get_puck_list: typeId = {}, targetId = {}, filter = {}, valuesDict = {}".format(typeId, targetId, filter, valuesDict))
+
+        try:
+            structure = self.account_data[int(valuesDict["flair_account"])][valuesDict["flair_structure"]]
+            pucks = [
+                (key, value['name'])
+                for key, value in structure['pucks'].iteritems()
+            ]
+        except:
+            pucks = []
+        self.logger.debug("get_pucks_list: pucks = {}".format(pucks))
+        return pucks
 
     def get_hvac_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.debug("get_hvac_list: typeId = {}, targetId = {}, filter = {}, valuesDict = {}".format(typeId, targetId, filter, valuesDict))
@@ -549,8 +595,7 @@ class Plugin(indigo.PluginBase):
         allowedRange = ALLOWED_RANGE[self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF]]
         return min(max(value, allowedRange[0]), allowedRange[1])
 
-    #   convert value (in the plugin-defined scale)
-    #   to Fahrenheit
+    #   convert value (in the plugin-defined scale) to Fahrenheit
     def _toFahrenheit(self,value):
         scale = self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF]
         if scale == 'C':
