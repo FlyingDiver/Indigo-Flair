@@ -250,13 +250,19 @@ class Plugin(indigo.PluginBase):
                         device = indigo.devices[puckID]
                         puck = self.account_data[int(device.pluginProps['flair_account'])][device.pluginProps['flair_structure']]['pucks'][device.pluginProps['flair_puck']]
                         self.logger.threaddebug("{}: Device update data: {}".format(device.name, puck))
-                        temp = puck['current-temperature-c']
                         update_list = []
                         update_list.append({'key' : "name",                  'value' : puck['name']})
                         update_list.append({'key' : "current-humidity",      'value' : puck['current-humidity']})
                         update_list.append({'key' : "updated-at",            'value' : puck['updated-at']})
+                        
+                        temp = float(puck['current-temperature-c'])
                         update_list.append({'key' : "current-temperature-c", 'value' : temp})
-                        update_list.append({'key' : 'sensorValue',           'value' : temp, 'decimalPlaces': 1, 'uiValue': "{} °C".format(puck['current-temperature-c'])})
+                        if self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF] == "C":
+                            update_list.append({'key' : 'sensorValue', 'value' : temp, 'uiValue': "{:.1f} °C".format(temp)})
+                        else:
+                            temp = (9.0 * temp)/5.0 + 32.0
+                            update_list.append({'key' : 'sensorValue', 'value' : temp, 'uiValue': "{:.1f} °F".format(temp)})
+
                         device.updateStatesOnServer(update_list)
 
                         
@@ -285,12 +291,15 @@ class Plugin(indigo.PluginBase):
                         update_list.append({'key' : "fan-speed",   'value' : hvac['fan-speed']})
                         update_list.append({'key' : "swing",       'value' : hvac['swing']})
                         update_list.append({'key' : "power",       'value' : hvac['power']})
-                        
-                        update_list.append({'key'           : "temperatureInput1", 
-                                            'value'         : hvac['temperature'], 
-                                            'uiValue'       : u"{}°F".format(hvac['temperature']),
-                                            'decimalPlaces' : 0})
                         update_list.append({'key' : "hvacOperationMode", 'value' : HVAC_MODE_MAP[hvac['mode']]})
+                                                                    
+                        temp = float(hvac['temperature'])
+                        if self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF] == "C":
+                            update_list.append({'key' : 'temperatureInput1', 'value' : temp, 'uiValue': "{:.1f} °C".format(temp)})
+                        else:
+                            temp = (9.0 * temp)/5.0 + 32.0
+                            update_list.append({'key' : 'temperatureInput1', 'value' : temp, 'uiValue': "{:.1f} °F".format(temp)})
+
                         device.updateStatesOnServer(update_list)
                         
                 # Refresh the auth tokens as needed.  Refresh interval for each account is calculated during the refresh
