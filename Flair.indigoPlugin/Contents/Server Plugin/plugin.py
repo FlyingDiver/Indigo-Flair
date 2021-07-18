@@ -7,42 +7,7 @@ import platform
 import time
 
 from flair import FlairAccount
-import temperature_scale
 
-
-TEMPERATURE_SCALE_PLUGIN_PREF='temperatureScale'
-TEMP_FORMATTERS = {
-    'F': temperature_scale.Fahrenheit(),
-    'C': temperature_scale.Celsius()
-}
-#   Plugin-enforced minimum and maximum setpoint ranges per temperature scale
-ALLOWED_RANGE = {
-    'F': (40,95),
-    'C': (6,35)
-}
-
-HVAC_MODE_MAP = {
-    'Heat'        : indigo.kHvacMode.Heat,
-    'Cool'        : indigo.kHvacMode.Cool,
-    'Auto'        : indigo.kHvacMode.HeatCool,
-    'Fan'         : indigo.kHvacMode.Off,
-    'Dry'         : indigo.kHvacMode.Off
-}   
-
-kHvacModeEnumToStrMap = {
-    indigo.kHvacMode.Cool               : u"cool",
-    indigo.kHvacMode.Heat               : u"heat",
-    indigo.kHvacMode.HeatCool           : u"auto",
-    indigo.kHvacMode.Off                : u"off",
-    indigo.kHvacMode.ProgramHeat        : u"program heat",
-    indigo.kHvacMode.ProgramCool        : u"program cool",
-    indigo.kHvacMode.ProgramHeatCool    : u"program auto"
-}
-
-kFanModeEnumToStrMap = {
-    indigo.kFanMode.Auto            : u"auto",
-    indigo.kFanMode.AlwaysOn        : u"on"
-}
 
 minMacOS = "10.13"
 def versiontuple(v):
@@ -78,7 +43,7 @@ class Plugin(indigo.PluginBase):
         self.flair_accounts = {}
         self.flair_vents = {}
         self.flair_pucks = {}
-        self.flair_hvacs = {}
+
         self.account_data = {}
         
         self.update_needed = False
@@ -144,15 +109,6 @@ class Plugin(indigo.PluginBase):
                 errorsDict['flair_account'] = u"Flair Account must be selected"
             if len(valuesDict['flair_structure']) == 0:
                 errorsDict['flair_structure'] = u"Flair Structure must be selected"
-
-        elif typeId == 'FlairHVAC':
-        
-            if len(valuesDict['flair_vent']) == 0:
-                errorsDict['flair_vent'] = u"Flair Vent must be selected"
-            if len(valuesDict['flair_account']) == 0:
-                errorsDict['flair_account'] = u"Flair Account must be selected"
-            if len(valuesDict['flair_hvac']) == 0:
-                errorsDict['flair_hvac'] = u"Flair Minisplit must be selected"
         
         if len(errorsDict) > 0:
             return (False, valuesDict, errorsDict)
@@ -183,11 +139,7 @@ class Plugin(indigo.PluginBase):
         elif dev.deviceTypeId == 'FlairVent':
             self.flair_vents[dev.id] = dev
             self.update_needed = True
-            
-        elif dev.deviceTypeId == 'FlairHVAC':
-            self.flair_hvacs[dev.id] = dev
-            self.update_needed = True
-            
+                        
 
     def deviceStopComm(self, dev):
         self.logger.info(u"{}: Stopping {} Device {}".format( dev.name, dev.deviceTypeId, dev.id))
@@ -203,11 +155,7 @@ class Plugin(indigo.PluginBase):
         elif dev.deviceTypeId == 'FlairVent':
             if dev.id in self.flair_vents:
                 del self.flair_vents[dev.id]
- 
-        elif dev.deviceTypeId == 'FlairHVAC':
-            if dev.id in self.flair_hvacs:
-                del self.flair_hvacs[dev.id]
- 
+  
     # need this to keep the device from start/stop looping when the refresh token is updated
     
     def didDeviceCommPropertyChange(self, origDev, newDev):
@@ -279,27 +227,6 @@ class Plugin(indigo.PluginBase):
                         update_list.append({'key' : "rssi",               'value' : vent['rssi']})
                         update_list.append({'key' : "updated-at",         'value' : vent['updated-at']})
                         update_list.append({'key' : "brightnessLevel",    'value' : vent['percent-open'], 'uiValue': "{}%".format(vent['percent-open']) })
-                        device.updateStatesOnServer(update_list)
-
-                        
-                    for hvacID in self.flair_hvacs:
-                        device = indigo.devices[hvacID]
-                        hvac = self.account_data[int(device.pluginProps['flair_account'])][device.pluginProps['flair_structure']]['hvac-units'][device.pluginProps['flair_hvac']]
-                        self.logger.threaddebug("{}: Device update data: {}".format(device.name, hvac))
-                        update_list = []
-                        update_list.append({'key' : "name",        'value' : hvac['name']})
-                        update_list.append({'key' : "fan-speed",   'value' : hvac['fan-speed']})
-                        update_list.append({'key' : "swing",       'value' : hvac['swing']})
-                        update_list.append({'key' : "power",       'value' : hvac['power']})
-                        update_list.append({'key' : "hvacOperationMode", 'value' : HVAC_MODE_MAP[hvac['mode']]})
-                                                                    
-                        temp = float(hvac['temperature'])
-                        if self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF] == "C":
-                            update_list.append({'key' : 'temperatureInput1', 'value' : temp, 'uiValue': "{:.1f} °C".format(temp)})
-                        else:
-                            temp = (9.0 * temp)/5.0 + 32.0
-                            update_list.append({'key' : 'temperatureInput1', 'value' : temp, 'uiValue': "{:.1f} °F".format(temp)})
-
                         device.updateStatesOnServer(update_list)
                         
                 # Refresh the auth tokens as needed.  Refresh interval for each account is calculated during the refresh
@@ -378,20 +305,6 @@ class Plugin(indigo.PluginBase):
             pucks = []
         self.logger.debug("get_pucks_list: pucks = {}".format(pucks))
         return pucks
-
-    def get_hvac_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.debug("get_hvac_list: typeId = {}, targetId = {}, filter = {}, valuesDict = {}".format(typeId, targetId, filter, valuesDict))
-
-        try:
-            structure = self.account_data[int(valuesDict["flair_account"])][valuesDict["flair_structure"]]
-            vents = [
-                (key, value['name'])
-                for key, value in structure['hvac-units'].iteritems()
-            ]
-        except:
-            vents = []
-        self.logger.debug("get_hvac_list: vents = {}".format(vents))
-        return vents
         
     # doesn't do anything, just needed to force other menus to dynamically refresh
     def menuChanged(self, valuesDict = None, typeId = None, devId = None):
@@ -487,133 +400,3 @@ class Plugin(indigo.PluginBase):
         else:
             self.logger.warning(u"{}: actionControlDevice: Unimplemented action.deviceAction: {}".format(device.name, action.deviceAction))
  
-
-              
-    def actionControlThermostat(self, action, device):
-        self.logger.debug(u"{}: actionControlThermostat: action.deviceAction: {}".format(device.name, action.thermostatAction))
-       ###### SET HVAC MODE ######
-        if action.thermostatAction == indigo.kThermostatAction.SetHvacMode:
-            self.handleChangeHvacModeAction(device, action.actionMode)
-
-        ###### SET FAN MODE ######
-        elif action.thermostatAction == indigo.kThermostatAction.SetFanMode:
-            self.handleChangeFanModeAction(device, action.actionMode, u"hvacFanIsOn")
-
-        ###### SET COOL SETPOINT ######
-        elif action.thermostatAction == indigo.kThermostatAction.SetCoolSetpoint:
-            newSetpoint = action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointCool")
-
-        ###### SET HEAT SETPOINT ######
-        elif action.thermostatAction == indigo.kThermostatAction.SetHeatSetpoint:
-            newSetpoint = action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointHeat")
-
-        ###### DECREASE/INCREASE COOL SETPOINT ######
-        elif action.thermostatAction == indigo.kThermostatAction.DecreaseCoolSetpoint:
-            newSetpoint = device.coolSetpoint - action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointCool")
-
-        elif action.thermostatAction == indigo.kThermostatAction.IncreaseCoolSetpoint:
-            newSetpoint = device.coolSetpoint + action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointCool")
-
-        ###### DECREASE/INCREASE HEAT SETPOINT ######
-        elif action.thermostatAction == indigo.kThermostatAction.DecreaseHeatSetpoint:
-            newSetpoint = device.heatSetpoint - action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointHeat")
-
-        elif action.thermostatAction == indigo.kThermostatAction.IncreaseHeatSetpoint:
-            newSetpoint = device.heatSetpoint + action.actionValue
-            self.handleChangeSetpointAction(device, newSetpoint, u"setpointHeat")
-
-        ###### REQUEST STATE UPDATES ######
-        elif action.thermostatAction in [indigo.kThermostatAction.RequestStatusAll, indigo.kThermostatAction.RequestMode,
-         indigo.kThermostatAction.RequestEquipmentState, indigo.kThermostatAction.RequestTemperatures, indigo.kThermostatAction.RequestHumidities,
-         indigo.kThermostatAction.RequestDeadbands, indigo.kThermostatAction.RequestSetpoints]:
-            self.update_needed = True
-
-        ###### UNTRAPPED CONDITIONS ######
-        # Explicitly show when nothing matches, indicates errors and unimplemented actions instead of quietly swallowing them
-        else:
-            self.logger.warning(u"{}: actionControlThermostat: Unimplemented action.deviceAction: {}".format(device.name, action.thermostatAction))
-
-  
-    ########################################
-    # Process action request from Indigo Server to change main thermostat's main mode.
-    ########################################
-
-    def handleChangeHvacModeAction(self, device, newHvacMode):
-        hvac_mode = kHvacModeEnumToStrMap.get(newHvacMode, u"unknown")
-        self.logger.debug(u"{} ({}): Mode set to: {}".format(device.name, device.address, hvac_mode))
-
-        self.update_needed = True
-        if "hvacOperationMode" in device.states:
-            device.updateStateOnServer("hvacOperationMode", newHvacMode)
-
-    ########################################
-    # Process action request from Indigo Server to change fan mode.
-    ########################################
-    
-    def handleChangeFanModeAction(self, device, requestedFanMode, stateKey):
-       
-        newFanMode = kFanModeEnumToStrMap.get(requestedFanMode, u"auto")
-        holdType = device.pluginProps.get("holdType", "nextTransition")
-        
-        if newFanMode == u"on":
-            self.logger.info(u'{}: set fan to ON, leave cool at {} and heat at {}'.format(device.name, device.coolSetpoint, device.heatSetpoint))
-
-        if newFanMode == u"auto":
-            self.logger.info(u'{}: resume normal program to set fan to Auto'.format(device.name))
-
-        self.update_needed = True
-        if stateKey in device.states:
-            device.updateStateOnServer(stateKey, requestedFanMode, uiValue="True")
-
-    ########################################
-    # Process action request from Indigo Server to change a cool/heat setpoint.
-    ########################################
-    
-    def handleChangeSetpointAction(self, device, newSetpoint, stateKey):
-
-        #   enforce minima/maxima based on the scale in use by the plugin
-        newSetpoint = self._constrainSetpoint(newSetpoint)
-
-        #   API uses F scale
-        newSetpoint = self._toFahrenheit(newSetpoint)
-
-        holdType = device.pluginProps.get("holdType", "nextTransition")
-
-        if stateKey == u"setpointCool":
-            self.logger.info(u'{}: set cool to: {} and leave heat at: {}'.format(device.name, newSetpoint, device.heatSetpoint))
-
-        elif stateKey == u"setpointHeat":
-            self.logger.info(u'{}: set heat to: {} and leave cool at: {}'.format(device.name, newSetpoint,device.coolSetpoint))
-
-        else:
-            self.logger.error(u'{}: handleChangeSetpointAction Invalid operation - {}'.format(device.name, stateKey))
-        
-        self.update_needed = True
-        if stateKey in device.states:
-            device.updateStateOnServer(stateKey, newSetpoint, uiValue="%.1f °F" % (newSetpoint))
-
-
-    #   constrain a setpoint the range
-    #   based on temperature scale in use by the plugin
-    def _constrainSetpoint(self, value):
-        allowedRange = ALLOWED_RANGE[self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF]]
-        return min(max(value, allowedRange[0]), allowedRange[1])
-
-    #   convert value (in the plugin-defined scale) to Fahrenheit
-    def _toFahrenheit(self,value):
-        scale = self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF]
-        if scale == 'C':
-            return (9 * value)/5 + 32
-        return value
-
-    def _setTemperatureScale(self, value):
-        self.logger.debug(u'setting temperature scale to %s' % value)
-        EcobeeThermostat.temperatureFormatter = TEMP_FORMATTERS.get(value)
-
-          
-
