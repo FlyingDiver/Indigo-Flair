@@ -205,7 +205,7 @@ class Plugin(indigo.PluginBase):
                         
                         temp = float(puck['current-temperature-c'])
                         update_list.append({'key' : "current-temperature-c", 'value' : temp})
-                        if self.pluginPrefs[TEMPERATURE_SCALE_PLUGIN_PREF] == "C":
+                        if self.pluginPrefs.get("temperatureScale", "F") == "C":
                             update_list.append({'key' : 'sensorValue', 'value' : temp, 'uiValue': "{:.1f} °C".format(temp)})
                         else:
                             temp = (9.0 * temp)/5.0 + 32.0
