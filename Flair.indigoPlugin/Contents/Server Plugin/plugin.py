@@ -118,43 +118,47 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(u"closedDeviceConfigUi, userCancelled = {}, devId = {}, typeId = {}, valuesDict = {}".format(userCancelled, devId, typeId, valuesDict))
 
         
-    def deviceStartComm(self, dev):
-        self.logger.info(u"{}: Starting {} Device {}".format(dev.name, dev.deviceTypeId, dev.id))
+    def deviceStartComm(self, device):
+        self.logger.info(u"{}: Starting {} Device {}".format(device.name, device.deviceTypeId, device.id))
+
+        # ensure device definition is up to date
+        device.stateListOrDisplayStateIdChanged()
+
         
-        if dev.deviceTypeId == 'FlairAccount':     # create the Flair account object.  It will attempt to refresh the auth token.
+        if device.deviceTypeId == 'FlairAccount':     # create the Flair account object.  It will attempt to refresh the auth token.
             
-            account = FlairAccount(dev.name, refresh_token = dev.pluginProps['RefreshToken'], username = dev.pluginProps['username'], password = dev.pluginProps['password'])
-            self.flair_accounts[dev.id] = account
-            newProps = dev.pluginProps
+            account = FlairAccount(device.name, refresh_token = device.pluginProps['RefreshToken'], username = device.pluginProps['username'], password = device.pluginProps['password'])
+            self.flair_accounts[device.id] = account
+            newProps = device.pluginProps
             newProps["RefreshToken"] = account.refresh_token
-            dev.replacePluginPropsOnServer(newProps)
+            device.replacePluginPropsOnServer(newProps)
             
-            dev.updateStateOnServer(key="authenticated", value=account.authenticated)
+            device.updateStateOnServer(key="authenticated", value=account.authenticated)
             self.update_needed = True
         
-        elif dev.deviceTypeId == 'FlairPuck':
-            self.flair_pucks[dev.id] = dev
+        elif device.deviceTypeId == 'FlairPuck':
+            self.flair_pucks[device.id] = device
             self.update_needed = True
             
-        elif dev.deviceTypeId == 'FlairVent':
-            self.flair_vents[dev.id] = dev
+        elif device.deviceTypeId == 'FlairVent':
+            self.flair_vents[device.id] = device
             self.update_needed = True
                         
 
-    def deviceStopComm(self, dev):
-        self.logger.info(u"{}: Stopping {} Device {}".format( dev.name, dev.deviceTypeId, dev.id))
+    def deviceStopComm(self, device):
+        self.logger.info(u"{}: Stopping {} Device {}".format(device.name, device.deviceTypeId, device.id))
 
-        if dev.deviceTypeId == 'FlairAccount':
-            if dev.id in self.flair_accounts:
-                del self.flair_accounts[dev.id]
+        if device.deviceTypeId == 'FlairAccount':
+            if device.id in self.flair_accounts:
+                del self.flair_accounts[device.id]
             
-        elif dev.deviceTypeId == 'FlairPuck':
-            if dev.id in self.flair_pucks:
-                del self.flair_pucks[dev.id]
+        elif device.deviceTypeId == 'FlairPuck':
+            if device.id in self.flair_pucks:
+                del self.flair_pucks[device.id]
  
-        elif dev.deviceTypeId == 'FlairVent':
-            if dev.id in self.flair_vents:
-                del self.flair_vents[dev.id]
+        elif device.deviceTypeId == 'FlairVent':
+            if device.id in self.flair_vents:
+                del self.flair_vents[device.id]
   
     # need this to keep the device from start/stop looping when the refresh token is updated
     
@@ -221,6 +225,7 @@ class Plugin(indigo.PluginBase):
                         update_list = []
                         update_list.append({'key' : "name",               'value' : vent['name']})
                         update_list.append({'key' : "percent-open",       'value' : vent['percent-open'], 'uiValue': "{}%".format(vent['percent-open']) })
+                        update_list.append({'key' : "percent-open-reason",'value' : vent['percent-open-reason']})
                         update_list.append({'key' : "duct-temperature-c", 'value' : vent['duct-temperature-c']})
                         update_list.append({'key' : "duct-pressure",      'value' : vent['duct-pressure']})
                         update_list.append({'key' : "system-voltage",     'value' : vent['system-voltage']})

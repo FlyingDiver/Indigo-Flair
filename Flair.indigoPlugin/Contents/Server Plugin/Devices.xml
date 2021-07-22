@@ -98,6 +98,11 @@
                 <TriggerLabel>percent-open</TriggerLabel>
                 <ControlPageLabel>percent-open</ControlPageLabel>
             </State>
+            <State id="percent-open-reason">
+                <ValueType>String</ValueType>
+                <TriggerLabel>percent-open-reason</TriggerLabel>
+                <ControlPageLabel>percent-open-reason</ControlPageLabel>
+            </State>
             <State id="duct-temperature-c">
                 <ValueType>Number</ValueType>
                 <TriggerLabel>duct-temperature-c</TriggerLabel>
