@@ -203,7 +203,7 @@ class FlairAccount:
                     else:
                         temp.update(vent_data['data']['attributes'])
 
-                    structure_dict['vents'][d['id']] = temp
+                    structure_dict['vents'][vents['id']] = temp
                 self.logger.debug("{}: Fetched {} vent records".format(self.name, len(structure_dict['vents'])))
                    
             self.structures[s['id']] = structure_dict
